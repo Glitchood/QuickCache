@@ -1,6 +1,6 @@
 {
     "apps": [{
-      "name": "discord_bot.py",
+      "name": "QuickCache.py",
       "script": "bot.py",
       "interpreter": "python",
       "interpreter_args": "-u"

@@ -56,7 +56,6 @@ async def check_priv(ctx: "CustomContext", member: discord.Member) -> Union[disc
     except Exception:
         pass
 
-
 def can_handle(ctx: "CustomContext", permission: str) -> bool:
     """ Checks if bot has permissions or is in DMs right now """
     return isinstance(ctx.channel, discord.DMChannel) or \
