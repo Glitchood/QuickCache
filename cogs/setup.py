@@ -11,7 +11,6 @@ class RemoveChannelModal(Modal):
         self.bot = bot
         self.category = category
 
-        # Add a text input to the modal for the channel name
         self.channel_name = TextInput(
             label="Category Name",
             placeholder="Enter the name of the CHANNEL to remove...",
@@ -28,12 +27,12 @@ class RemoveChannelModal(Modal):
         if channel:
             await channel.delete()
             await interaction.response.send_message(
-                f"Category `{channel_name}` removed from `{self.category.name}`.",
+                f"✔️ Category `{channel_name}` removed from `{self.category.name}`.",
                 ephemeral=True,
             )
         else:
             await interaction.response.send_message(
-                f"No channel named `{channel_name}` found in `{self.category.name}`.",
+                f"✖️ No channel named `{channel_name}` found in `{self.category.name}`.",
                 ephemeral=True,
             )
 
@@ -41,7 +40,7 @@ class RemoveChannelModal(Modal):
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
         await interaction.response.send_message(
-            "Oops! Something went wrong.", ephemeral=True
+            "✖️ Oops! Something went wrong.", ephemeral=True
         )
         import traceback
 
@@ -54,7 +53,6 @@ class RenameChannelModal(Modal):
         self.bot = bot
         self.category = category
 
-        # Add a text input to the modal for the current channel name
         self.current_channel_name = TextInput(
             label="Current Category Name",
             placeholder="Enter the current name of the CHANNEL...",
@@ -64,7 +62,6 @@ class RenameChannelModal(Modal):
         )
         self.add_item(self.current_channel_name)
 
-        # Add a text input to the modal for the new channel name
         self.new_channel_name = TextInput(
             label="New Category Name",
             placeholder="Enter the new name for the category...",
@@ -78,20 +75,25 @@ class RenameChannelModal(Modal):
         current_channel_name = self.current_channel_name.value
         new_channel_name = self.new_channel_name.value
 
-        # Find the channel in the category
         channel = discord.utils.get(self.category.channels, name=current_channel_name)
 
+        new_channel = discord.utils.get(self.category.channels, name=new_channel_name)
+
         if channel:
-            await channel.edit(name=new_channel_name)
-            await interaction.response.send_message(
-                f"Category `{current_channel_name}` renamed to "
-                f"`{new_channel_name}`.",
-                ephemeral=True,
-            )
+            if not new_channel:
+                await channel.edit(name=new_channel_name)
+                await interaction.response.send_message(
+                    f"✔️ Category `{current_channel_name}` renamed to `{new_channel_name}`.",  # noqa E501
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    f"✖️ Category `{new_channel_name}` already exists.",
+                    ephemeral=True,
+                )
         else:
             await interaction.response.send_message(
-                f"No channel named `{current_channel_name}`"
-                f" found in `{self.category.name}`.",
+                f"✖️ No channel named `{current_channel_name}` found in `{self.category.name}`.",  # noqa E501
                 ephemeral=True,
             )
 
@@ -99,7 +101,7 @@ class RenameChannelModal(Modal):
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
         await interaction.response.send_message(
-            "Oops! Something went wrong.", ephemeral=True
+            "✖️ Oops! Something went wrong.", ephemeral=True
         )
         import traceback
 
@@ -112,7 +114,6 @@ class AddChannelModal(Modal):
         self.bot = bot
         self.category = category
 
-        # Add a text input to the modal for the channel name
         self.channel_name = TextInput(
             label="Category Name",
             placeholder="Enter the name for the new category...",
@@ -124,17 +125,26 @@ class AddChannelModal(Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         channel_name = self.channel_name.value
-        await self.category.create_text_channel(name=channel_name)
-        await interaction.response.send_message(
-            f"Category `{channel_name}` added to `{self.category.name}`.",
-            ephemeral=True,
-        )
+
+        channel = discord.utils.get(self.category.channels, name=channel_name)
+
+        if channel:
+            await interaction.response.send_message(
+                f"✖️ Category `{channel_name}` already exists.",
+                ephemeral=True,
+            )
+        else:
+            await self.category.create_text_channel(name=channel_name)
+            await interaction.response.send_message(
+                f"✔️ Category `{channel_name}` added to `{self.category.name}`.",
+                ephemeral=True,
+            )
 
     async def on_error(
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
         await interaction.response.send_message(
-            "Oops! Something went wrong.", ephemeral=True
+            "✖️ Oops! Something went wrong.", ephemeral=True
         )
         import traceback
 
@@ -143,22 +153,30 @@ class AddChannelModal(Modal):
 
 class ManageChannelsView(View):
     def __init__(self, *, bot, user_id, category, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(timeout=300, **kwargs)  # 5 minutes timeout
         self.bot = bot
         self.user_id = user_id
         self.category = category
+        self.tags = []  # Initialize an empty list of tags
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "✖️ You are not authorized to use this button.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def on_timeout(self):
+        # This method will be called when the view times out (after 5 minutes)
+        for channel in self.category.channels:
+            await channel.delete()
+        await self.category.delete()
 
     @discord.ui.button(emoji="➕", label="Add", style=discord.ButtonStyle.success)
     async def add_channel_button(
         self, interaction: discord.Interaction, button: Button
     ):
-        # Check if the user who clicked the button is the one who invoked the command
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "You are not authorized to use this button.", ephemeral=True
-            )
-            return
-        # Respond to the interaction with a modal to add a channel
         await interaction.response.send_modal(
             AddChannelModal(bot=self.bot, category=self.category)
         )
@@ -167,13 +185,6 @@ class ManageChannelsView(View):
     async def remove_channel_button(
         self, interaction: discord.Interaction, button: Button
     ):
-        # Check if the user who clicked the button is the one who invoked the command
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "You are not authorized to use this button.", ephemeral=True
-            )
-            return
-        # Respond to the interaction with a modal to remove a channel
         await interaction.response.send_modal(
             RemoveChannelModal(bot=self.bot, category=self.category)
         )
@@ -182,13 +193,6 @@ class ManageChannelsView(View):
     async def rename_channel_button(
         self, interaction: discord.Interaction, button: Button
     ):
-        # Check if the user who clicked the button is the one who invoked the command
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "You are not authorized to use this button.", ephemeral=True
-            )
-            return
-        # Respond to the interaction with a modal to rename a channel
         await interaction.response.send_modal(
             RenameChannelModal(bot=self.bot, category=self.category)
         )
@@ -197,19 +201,9 @@ class ManageChannelsView(View):
     async def confirm_channel_button(
         self, interaction: discord.Interaction, button: Button
     ):
-        # Check if the user who clicked the button is the one who invoked the command
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "You are not authorized to use this button.", ephemeral=True
-            )
-            return
-
-        # Initialize the ManageTagsView with an empty list of tags
-        view = ManageTagsView(bot=self.bot, user_id=self.user_id, tags=[])
-
-        # Send an ephemeral message with the ManageTagsView
+        view = ManageTagsView(bot=self.bot, user_id=self.user_id, tags=self.tags)
         await interaction.response.send_message(
-            f"Manage **tags** in `{self.cache_name.value}`::", view=view, ephemeral=True
+            f"Manage **tags** in `{self.category.name}`:", view=view, ephemeral=True
         )
 
 
@@ -235,11 +229,11 @@ class AddTagModal(Modal):
         if tag not in self.tags:
             self.tags.append(tag)
             await interaction.response.send_message(
-                f"Tag `{tag}` added.", ephemeral=True
+                f"✔️ Tag `{tag}` added.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                f"Tag `{tag}` already exists.", ephemeral=True
+                f"✖️ Tag `{tag}` already exists.", ephemeral=True
             )
 
 
@@ -265,11 +259,11 @@ class RemoveTagModal(Modal):
         if tag in self.tags:
             self.tags.remove(tag)
             await interaction.response.send_message(
-                f"Tag `{tag}` removed.", ephemeral=True
+                f"✔️ Tag `{tag}` removed.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                f"No such tag `{tag}` found.", ephemeral=True
+                f"✖️ No such tag `{tag}` found.", ephemeral=True
             )
 
 
@@ -298,86 +292,68 @@ class RenameTagModal(Modal):
         self.add_item(self.new_tag_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        current_tag = self.current_tag_name.value
-        new_tag = self.new_tag_name.value
+        current_tag = self.current_tag_input.value
+        new_tag = self.new_tag_input.value
 
         if current_tag not in self.tags:
             await interaction.response.send_message(
-                f"No tag named `{current_tag}` found.", ephemeral=True
+                f"✖️ No tag named `{current_tag}` found.", ephemeral=True
             )
             return
 
         if new_tag in self.tags:
             await interaction.response.send_message(
-                "A tag with this name already exists. Please choose a different name.",
-                ephemeral=True,
+                f"✖️ Tag `{new_tag}` already exists.", ephemeral=True
             )
             return
 
         self.tags[self.tags.index(current_tag)] = new_tag
         await interaction.response.send_message(
-            f"Tag `{current_tag}` renamed to `{new_tag}`.", ephemeral=True
+            f"✔️ Tag `{current_tag}` renamed to `{new_tag}`.", ephemeral=True
         )
 
 
 class ManageTagsView(View):
     def __init__(self, *, bot, user_id, tags, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(timeout=300, **kwargs)  # 5 minutes timeout
         self.bot = bot
         self.user_id = user_id
-        self.tags = tags  # List of tags collected from the user
+        self.tags = tags
 
-    @discord.ui.button(emoji="➕", label="Add", style=discord.ButtonStyle.success)
-    async def add_tag_button(self, interaction: discord.Interaction, button: Button):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "You are not authorized to use this button.", ephemeral=True
             )
-            return
+            return False
+        return True
+
+    async def on_timeout(self):
+        # This method will be called when the view times out (after 5 minutes)
+        self.tags.clear()
+
+    @discord.ui.button(emoji="➕", label="Add", style=discord.ButtonStyle.success)
+    async def add_tag_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(
             AddTagModal(bot=self.bot, user_id=self.user_id, tags=self.tags)
         )
 
-    @discord.ui.button(emoji="➖", label="Delete", style=discord.ButtonStyle.danger)
+    @discord.ui.button(emoji="➖", label="Remove", style=discord.ButtonStyle.danger)
     async def remove_tag_button(self, interaction: discord.Interaction, button: Button):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "You are not authorized to use this button.", ephemeral=True
-            )
-            return
         await interaction.response.send_modal(
             RemoveTagModal(bot=self.bot, user_id=self.user_id, tags=self.tags)
         )
 
-    @discord.ui.button(emoji="✏️", label="Rename", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(emoji="✏️", label="Rename", style=discord.ButtonStyle.gray)
     async def rename_tag_button(self, interaction: discord.Interaction, button: Button):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "You are not authorized to use this button.", ephemeral=True
-            )
-            return
         await interaction.response.send_modal(
             RenameTagModal(bot=self.bot, user_id=self.user_id, tags=self.tags)
         )
 
-    @discord.ui.button(emoji="☑️", label="Confirm", style=discord.ButtonStyle.primary)
-    async def confirm_tags_button(
-        self, interaction: discord.Interaction, button: Button
-    ):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "You are not authorized to use this button.", ephemeral=True
-            )
-            return
-
-        # Show the final list of tags
-        if not self.tags:
-            tags_summary = "No tags have been added."
-        else:
-            tags_summary = "\n".join(self.tags)
-
+    @discord.ui.button(emoji="☑️", label="Finish", style=discord.ButtonStyle.primary)
+    async def finish_tag_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message(
-            f"Tags confirmed:\n{tags_summary}", ephemeral=True
+            f"Tag management completed. \n {self.tags}", ephemeral=True
         )
 
 
@@ -403,13 +379,13 @@ class SetupCacheModal(Modal):
 
         if not interaction.guild.me.guild_permissions.manage_channels:
             await interaction.response.send_message(
-                "I don't have permission to manage channels.", ephemeral=True
+                "✖️ I don't have permission to manage channels.", ephemeral=True
             )
             return
 
         category = await interaction.guild.create_category(category_name)
         await interaction.response.send_message(
-            f"Cache `{cache_name}` setup successfully!", ephemeral=True
+            f"✔️ Cache `{cache_name}` setup successfully!", ephemeral=True
         )
 
         # Send a follow-up message with options to add or remove channels
@@ -422,7 +398,7 @@ class SetupCacheModal(Modal):
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
         await interaction.response.send_message(
-            "Oops! Something went wrong.", ephemeral=True
+            "✖️ Oops! Something went wrong.", ephemeral=True
         )
         import traceback
 
@@ -441,7 +417,7 @@ class SetupCacheView(View):
         # Check if the user who clicked the button is the one who invoked the command
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
-                "You are not authorized to use this button.", ephemeral=True
+                "✖️ You are not authorized to use this button.", ephemeral=True
             )
             return
 
@@ -470,7 +446,7 @@ class Setup(commands.Cog):
     async def setup(self, ctx: commands.Context):
         """Sets up a QuickCache in the current server"""
         if not ctx.guild.me.guild_permissions.manage_channels:
-            await ctx.send("I don't have permission to manage channels.")
+            await ctx.send("✖️ I don't have permission to manage channels.")
             return
 
         # Send the initial message with the view
