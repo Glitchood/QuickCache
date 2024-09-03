@@ -13,7 +13,6 @@ bot = data.DiscordBot(
     help_command=data.HelpFormat(),
     allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
     intents=discord.Intents(
-        # kwargs found at https://docs.pycord.dev/en/master/api.html?highlight=discord%20intents#discord.Intents
         guilds=True,
         members=True,
         messages=True,
@@ -22,6 +21,12 @@ bot = data.DiscordBot(
         message_content=True,
     ),
 )
+
+
+@bot.command(aliases=["f"])
+async def fing(ctx):
+    await ctx.send("Fong! `{0}`".format(round(bot.latency, 3)))
+
 
 # The category ID where the channels are located
 CATEGORY_ID = 1279645963820204042
@@ -111,7 +116,7 @@ async def save_snippet(message):
 
 @bot.event
 async def on_ready():
-    print(f"Ready!\n-------------------")
+    print("Ready!\n-------------------")
 
 
 @bot.event
