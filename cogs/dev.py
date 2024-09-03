@@ -1,8 +1,52 @@
 import discord
 from discord.ext import commands
-
+from datetime import datetime
 from utils.data import DiscordBot
 from utils.default import CustomContext
+
+
+async def generate_embed(cache_name, category_list, tag_list):
+    embed = discord.Embed(
+        title=f"{cache_name}", colour=0xF0D464, timestamp=datetime.now()
+    )
+
+    if category_list:
+        categories = "```\n" + "\n".join(category_list) + "\n```"
+        embed.add_field(
+            name="**__Categories:__**",
+            value=categories,
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name="**__Categories:__ None**",
+            value="",
+            inline=False,
+        )
+
+    # Handle the first three unique fields if present
+    if len(tag_list) > 0:
+        embed.add_field(name="**__Tags:__**", value=f"`{tag_list[0]}`", inline=True)
+    else:
+        embed.add_field(name="**__Tags:__ None**", value="‍", inline=True)
+    if len(tag_list) > 1:
+        embed.add_field(name="‍", value=f"`{tag_list[1]}`", inline=True)
+    if len(tag_list) > 2:
+        embed.add_field(name="‍", value=f"`{tag_list[2]}`", inline=True)
+    # Handle the remaining fields with default formatting
+    for index in range(3, len(tag_list)):
+        embed.add_field(name="", value=f"`{tag_list[index]}`", inline=True)
+
+    embed.set_thumbnail(
+        url="https://cdn-0.emojis.wiki/emoji-pics/microsoft/card-index-dividers-microsoft.png"  # noqa E501
+    )
+
+    embed.set_footer(
+        text="QuickCache",
+        icon_url="https://cdn-0.emojis.wiki/emoji-pics/microsoft/card-file-box-microsoft.png",  # noqa E501
+    )
+
+    return embed
 
 
 class Development(commands.Cog):
@@ -83,6 +127,16 @@ class Development(commands.Cog):
             f"Deleted {len(qc_categories)} categories starting with `[QC]`.",
             delete_after=5,
         )
+
+    @commands.command()
+    async def embed(self, ctx: CustomContext, num: int = 10):
+        """Sends a test embed"""  # noqa E501
+        embed = await generate_embed(
+            "",  # QuickCache name
+            [],  # "Category" names
+            [],  # "Tags" names
+        )
+        await ctx.send(embed=embed)
 
 
 async def setup(bot: DiscordBot):

@@ -3,17 +3,18 @@ from discord.ui import Modal, TextInput, View, Button
 
 
 class ManageChannelsView(View):
-    def __init__(self, *, bot, user_id, category, **kwargs):
+    def __init__(self, *, bot, user_id, category, cog, **kwargs):
         super().__init__(timeout=300, **kwargs)  # 5 minutes timeout
         self.bot = bot
         self.user_id = user_id
         self.category = category
+        self.cog = cog  # Reference to the Setup cog
         self.tags = []  # Initialize an empty list of tags
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
-                "✖️ You are not authorized to use this button.", ephemeral=True
+                "❌ You are not authorized to use this button.", ephemeral=True
             )
             return False
         return True
@@ -52,18 +53,26 @@ class ManageChannelsView(View):
     async def confirm_channel_button(
         self, interaction: discord.Interaction, button: Button
     ):
-        view = ManageTagsView(bot=self.bot, user_id=self.user_id, tags=self.tags)
+        view = ManageTagsView(
+            bot=self.bot,
+            user_id=self.user_id,
+            tags=self.tags,
+            cog=self.cog,
+            category=self.category,
+        )
         await interaction.response.send_message(
             f"Manage **tags** in `{self.category.name}`:", view=view, ephemeral=True
         )
 
 
 class ManageTagsView(View):
-    def __init__(self, *, bot, user_id, tags, **kwargs):
+    def __init__(self, *, bot, user_id, tags, cog, category, **kwargs):
         super().__init__(timeout=300, **kwargs)  # 5 minutes timeout
         self.bot = bot
         self.user_id = user_id
         self.tags = tags
+        self.cog = cog  # Reference to the Setup cog
+        self.category = category
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
@@ -95,32 +104,33 @@ class ManageTagsView(View):
             RenameTagModal(bot=self.bot, user_id=self.user_id, tags=self.tags)
         )
 
-    @discord.ui.button(emoji="☑️", label="Finish", style=discord.ButtonStyle.primary)
+    @discord.ui.button(
+        emoji="☑️", label="Finish Setup", style=discord.ButtonStyle.primary
+    )
     async def finish_tag_button(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message(
-            f"Tag management completed. \n {self.tags}", ephemeral=True
-        )
+        await self.cog.on_setup_finished(interaction, self.tags, self.category)
 
 
 class ManageCacheView(View):
-    def __init__(self, *, bot, user_id, message_id=None, **kwargs):
+    def __init__(self, *, bot, user_id, message_id=None, cog, **kwargs):
         super().__init__(**kwargs)
         self.bot = bot
         self.user_id = user_id
         self.message_id = message_id  # Store the message_id to delete it later
+        self.cog = cog  # Reference to the Setup cog
 
     @discord.ui.button(label="Setup QuickCache", style=discord.ButtonStyle.primary)
     async def setup_button(self, interaction: discord.Interaction, button: Button):
         # Check if the user who clicked the button is the one who invoked the command
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
-                "✖️ You are not authorized to use this button.", ephemeral=True
+                "❌ You are not authorized to use this button.", ephemeral=True
             )
             return
 
         # Respond to the interaction with the modal
         await interaction.response.send_modal(
-            ManageCacheModal(bot=self.bot, user_id=self.user_id)
+            ManageCacheModal(bot=self.bot, user_id=self.user_id, cog=self.cog)
         )
 
         # Attempt to delete the original message after responding
@@ -263,23 +273,33 @@ class RemoveChannelModal(Modal):
         if channel:
             await channel.delete()
             await interaction.response.send_message(
-                f"✔️ Category `{channel_name}` removed from `{self.category.name}`.",
+                f"✅ Category `{channel_name}` removed from `{self.category.name}`.",
                 ephemeral=True,
             )
         else:
             await interaction.response.send_message(
-                f"✖️ No channel named `{channel_name}` found in `{self.category.name}`.",
+                f"❌ No channel named `{channel_name}` found in `{self.category.name}`.",
                 ephemeral=True,
             )
 
     async def on_error(
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
-        await interaction.response.send_message(
-            "✖️ Oops! Something went wrong.", ephemeral=True
-        )
         import traceback
 
+        # Use followup.send only if the interaction has already been responded to
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                "❌ Oops! Something went wrong while processing your request.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "❌ Oops! Something went wrong while processing your request.",
+                ephemeral=True,
+            )
+
+        # Log the error for debugging purposes
         traceback.print_exception(type(error), error, error.__traceback__)
 
 
@@ -319,28 +339,38 @@ class RenameChannelModal(Modal):
             if not new_channel:
                 await channel.edit(name=new_channel_name)
                 await interaction.response.send_message(
-                    f"✔️ Category `{current_channel_name}` renamed to `{new_channel_name}`.",  # noqa E501
+                    f"✅ Category `{current_channel_name}` renamed to `{new_channel_name}`.",  # noqa E501
                     ephemeral=True,
                 )
             else:
                 await interaction.response.send_message(
-                    f"✖️ Category `{new_channel_name}` already exists.",
+                    f"❌ Category `{new_channel_name}` already exists.",
                     ephemeral=True,
                 )
         else:
             await interaction.response.send_message(
-                f"✖️ No channel named `{current_channel_name}` found in `{self.category.name}`.",  # noqa E501
+                f"❌ No channel named `{current_channel_name}` found in `{self.category.name}`.",  # noqa E501
                 ephemeral=True,
             )
 
     async def on_error(
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
-        await interaction.response.send_message(
-            "✖️ Oops! Something went wrong.", ephemeral=True
-        )
         import traceback
 
+        # Use followup.send only if the interaction has already been responded to
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                "❌ Oops! Something went wrong while processing your request.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "❌ Oops! Something went wrong while processing your request.",
+                ephemeral=True,
+            )
+
+        # Log the error for debugging purposes
         traceback.print_exception(type(error), error, error.__traceback__)
 
 
@@ -366,29 +396,39 @@ class AddChannelModal(Modal):
 
         if channel:
             await interaction.response.send_message(
-                f"✖️ Category `{channel_name}` already exists.",
+                f"❌ Category `{channel_name}` already exists.",
                 ephemeral=True,
             )
         else:
             await self.category.create_text_channel(name=channel_name)
             await interaction.response.send_message(
-                f"✔️ Category `{channel_name}` added to `{self.category.name}`.",
+                f"✅ Category `{channel_name}` added to `{self.category.name}`.",
                 ephemeral=True,
             )
 
     async def on_error(
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
-        await interaction.response.send_message(
-            "✖️ Oops! Something went wrong.", ephemeral=True
-        )
         import traceback
 
+        # Use followup.send only if the interaction has already been responded to
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                "❌ Oops! Something went wrong while processing your request.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "❌ Oops! Something went wrong while processing your request.",
+                ephemeral=True,
+            )
+
+        # Log the error for debugging purposes
         traceback.print_exception(type(error), error, error.__traceback__)
 
 
 class ManageCacheModal(Modal):
-    def __init__(self, *, bot, user_id, **kwargs):
+    def __init__(self, *, bot, user_id, cog, **kwargs):
         super().__init__(title="Setup a new QuickCache", **kwargs)
         self.bot = bot
         self.user_id = user_id
@@ -402,6 +442,7 @@ class ManageCacheModal(Modal):
             max_length=40,
         )
         self.add_item(self.cache_name)
+        self.cog = cog
 
     async def on_submit(self, interaction: discord.Interaction):
         cache_name = self.cache_name.value
@@ -409,17 +450,19 @@ class ManageCacheModal(Modal):
 
         if not interaction.guild.me.guild_permissions.manage_channels:
             await interaction.response.send_message(
-                "✖️ I don't have permission to manage channels.", ephemeral=True
+                "❌ I don't have permission to manage channels.", ephemeral=True
             )
             return
 
         category = await interaction.guild.create_category(category_name)
         await interaction.response.send_message(
-            f"✔️ Cache `{cache_name}` setup successfully!", ephemeral=True
+            f"✅ Cache `{cache_name}` setup successfully!", ephemeral=True
         )
 
         # Send a follow-up message with options to add or remove channels
-        view = ManageChannelsView(bot=self.bot, user_id=self.user_id, category=category)
+        view = ManageChannelsView(
+            bot=self.bot, user_id=self.user_id, category=category, cog=self.cog
+        )
         await interaction.followup.send(
             f"Manage **categories** in `{cache_name}`:", view=view, ephemeral=True
         )
@@ -427,9 +470,19 @@ class ManageCacheModal(Modal):
     async def on_error(
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
-        await interaction.response.send_message(
-            "✖️ Oops! Something went wrong.", ephemeral=True
-        )
         import traceback
 
+        # Use followup.send only if the interaction has already been responded to
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                "❌ Oops! Something went wrong while processing your request.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "❌ Oops! Something went wrong while processing your request.",
+                ephemeral=True,
+            )
+
+        # Log the error for debugging purposes
         traceback.print_exception(type(error), error, error.__traceback__)
