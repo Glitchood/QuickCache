@@ -1,52 +1,7 @@
 import discord
 from discord.ext import commands
-from datetime import datetime
 from utils.data import DiscordBot
 from utils.default import CustomContext
-
-
-async def generate_embed(cache_name, category_list, tag_list):
-    embed = discord.Embed(
-        title=f"{cache_name}", colour=0xF0D464, timestamp=datetime.now()
-    )
-
-    if category_list:
-        categories = "```\n" + "\n".join(category_list) + "\n```"
-        embed.add_field(
-            name="**__Categories:__**",
-            value=categories,
-            inline=False,
-        )
-    else:
-        embed.add_field(
-            name="**__Categories:__ None**",
-            value="",
-            inline=False,
-        )
-
-    # Handle the first three unique fields if present
-    if len(tag_list) > 0:
-        embed.add_field(name="**__Tags:__**", value=f"`{tag_list[0]}`", inline=True)
-    else:
-        embed.add_field(name="**__Tags:__ None**", value="‍", inline=True)
-    if len(tag_list) > 1:
-        embed.add_field(name="‍", value=f"`{tag_list[1]}`", inline=True)
-    if len(tag_list) > 2:
-        embed.add_field(name="‍", value=f"`{tag_list[2]}`", inline=True)
-    # Handle the remaining fields with default formatting
-    for index in range(3, len(tag_list)):
-        embed.add_field(name="", value=f"`{tag_list[index]}`", inline=True)
-
-    embed.set_thumbnail(
-        url="https://cdn-0.emojis.wiki/emoji-pics/microsoft/card-index-dividers-microsoft.png"  # noqa E501
-    )
-
-    embed.set_footer(
-        text="QuickCache",
-        icon_url="https://cdn-0.emojis.wiki/emoji-pics/microsoft/card-file-box-microsoft.png",  # noqa E501
-    )
-
-    return embed
 
 
 class Development(commands.Cog):
@@ -56,7 +11,6 @@ class Development(commands.Cog):
         self.bot = bot
 
     @commands.command()
-    @commands.is_owner()
     async def purge(self, ctx: CustomContext, num: int = 10):
         """Purges num messages in the current channel. If in DM, clears only bot's messages."""  # noqa E501
         if ctx.guild:
@@ -71,16 +25,16 @@ class Development(commands.Cog):
         if num < 1 or num > 100:
             await ctx.send("You can only purge between 1 and 100 messages.")
             return
-
+        num += 1
         if isinstance(ctx.channel, discord.DMChannel):
-            # If in DM, filter and delete only the bot's messages
+
             def is_bot_message(msg):
                 return msg.author == self.bot.user
 
             # Fetch the messages and filter
             messages = [
                 msg
-                async for msg in ctx.channel.history(limit=num + 1)
+                async for msg in ctx.channel.history(limit=num)
                 if is_bot_message(msg)
             ]
             for msg in messages:
@@ -92,7 +46,6 @@ class Development(commands.Cog):
             await ctx.send(f"Deleted {len(deleted)} messages.", delete_after=5)
 
     @commands.command()
-    @commands.is_owner()
     async def close(self, ctx: CustomContext, num: int = 10):
         """Deletes all channels within a category and the category itself which starts with [QC]"""  # noqa E501
 
@@ -127,16 +80,6 @@ class Development(commands.Cog):
             f"Deleted {len(qc_categories)} categories starting with `[QC]`.",
             delete_after=5,
         )
-
-    @commands.command()
-    async def embed(self, ctx: CustomContext, num: int = 10):
-        """Sends a test embed"""  # noqa E501
-        embed = await generate_embed(
-            "",  # QuickCache name
-            [],  # "Category" names
-            [],  # "Tags" names
-        )
-        await ctx.send(embed=embed)
 
 
 async def setup(bot: DiscordBot):
