@@ -1,5 +1,55 @@
 import discord
+from datetime import datetime
 from discord.ui import Modal, TextInput, View, Button
+
+
+def gen_cache_overview(category: discord.CategoryChannel, tag_list):
+    """Generates a Embed object using CategoryChannel and list of tags"""
+
+    cache_name = category.name.removeprefix("[QC] ")
+    category_list = [channel.name for channel in category.channels]
+
+    embed = discord.Embed(
+        title=f"{cache_name}", colour=0xF0D464, timestamp=datetime.now()
+    )
+
+    if category_list:
+        categories = "```\n" + "\n".join(category_list) + "\n```"
+        embed.add_field(
+            name="**__Categories:__**",
+            value=categories,
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name="**__Categories:__ None**",
+            value="",
+            inline=False,
+        )
+
+    # Handle the first three unique fields if present
+    if len(tag_list) > 0:
+        embed.add_field(name="**__Tags:__**", value=f"`{tag_list[0]}`", inline=True)
+    else:
+        embed.add_field(name="**__Tags:__ None**", value="‍", inline=True)
+    if len(tag_list) > 1:
+        embed.add_field(name="‍", value=f"`{tag_list[1]}`", inline=True)
+    if len(tag_list) > 2:
+        embed.add_field(name="‍", value=f"`{tag_list[2]}`", inline=True)
+    # Handle the remaining fields with default formatting
+    for index in range(3, len(tag_list)):
+        embed.add_field(name="", value=f"`{tag_list[index]}`", inline=True)
+
+    embed.set_thumbnail(
+        url="https://cdn-0.emojis.wiki/emoji-pics/microsoft/card-index-dividers-microsoft.png"  # noqa E501
+    )
+
+    embed.set_footer(
+        text="QuickCache",
+        icon_url="https://cdn-0.emojis.wiki/emoji-pics/microsoft/card-file-box-microsoft.png",  # noqa E501
+    )
+
+    return embed
 
 
 class ManageChannelsView(View):
@@ -60,8 +110,10 @@ class ManageChannelsView(View):
             cog=self.cog,
             category=self.category,
         )
-        await interaction.response.send_message(
-            f"Manage **tags** in `{self.category.name}`:", view=view, ephemeral=True
+        await interaction.response.edit_message(
+            content="**Manage __tags__**:",
+            embed=gen_cache_overview(self.category, self.tags),
+            view=view,
         )
 
 
@@ -89,34 +141,54 @@ class ManageTagsView(View):
     @discord.ui.button(emoji="➕", label="Add", style=discord.ButtonStyle.success)
     async def add_tag_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(
-            AddTagModal(bot=self.bot, user_id=self.user_id, tags=self.tags)
+            AddTagModal(
+                bot=self.bot,
+                user_id=self.user_id,
+                category=self.category,
+                tags=self.tags,
+            )
         )
 
     @discord.ui.button(emoji="➖", label="Remove", style=discord.ButtonStyle.danger)
     async def remove_tag_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(
-            RemoveTagModal(bot=self.bot, user_id=self.user_id, tags=self.tags)
+            RemoveTagModal(
+                bot=self.bot,
+                user_id=self.user_id,
+                category=self.category,
+                tags=self.tags,
+            )
         )
 
     @discord.ui.button(emoji="✏️", label="Rename", style=discord.ButtonStyle.gray)
     async def rename_tag_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(
-            RenameTagModal(bot=self.bot, user_id=self.user_id, tags=self.tags)
+            RenameTagModal(
+                bot=self.bot,
+                user_id=self.user_id,
+                category=self.category,
+                tags=self.tags,
+            )
         )
 
     @discord.ui.button(
         emoji="☑️", label="Finish Setup", style=discord.ButtonStyle.primary
     )
     async def finish_tag_button(self, interaction: discord.Interaction, button: Button):
-        await self.cog.on_setup_finished(interaction, self.tags, self.category)
+
+        cache_name = self.category.name.removeprefix("[QC] ")
+        await interaction.response.edit_message(
+            content=f"**`{cache_name}` Setup finished!**:",
+            embed=gen_cache_overview(self.category, self.tags),
+            view=None,
+        )
 
 
 class ManageCacheView(View):
-    def __init__(self, *, bot, user_id, message_id=None, cog, **kwargs):
+    def __init__(self, *, bot, user_id, cog, **kwargs):
         super().__init__(**kwargs)
         self.bot = bot
         self.user_id = user_id
-        self.message_id = message_id  # Store the message_id to delete it later
         self.cog = cog  # Reference to the Setup cog
 
     @discord.ui.button(label="Setup QuickCache", style=discord.ButtonStyle.primary)
@@ -133,23 +205,14 @@ class ManageCacheView(View):
             ManageCacheModal(bot=self.bot, user_id=self.user_id, cog=self.cog)
         )
 
-        # Attempt to delete the original message after responding
-        if self.message_id:
-            try:
-                original_message = await interaction.channel.fetch_message(
-                    self.message_id
-                )
-                await original_message.delete()
-            except discord.NotFound:
-                pass  # Message already deleted or not found
-
 
 class AddTagModal(Modal):
-    def __init__(self, *, bot, user_id, tags, **kwargs):
+    def __init__(self, *, bot, user_id, category, tags, **kwargs):
         super().__init__(title="Add Tag", **kwargs)
         self.bot = bot
         self.user_id = user_id
         self.tags = tags
+        self.category = category
 
         self.tag_input = TextInput(
             label="Tag",
@@ -165,21 +228,23 @@ class AddTagModal(Modal):
 
         if tag not in self.tags:
             self.tags.append(tag)
-            await interaction.response.send_message(
-                f"Tag `{tag}` added.", ephemeral=True
+            await interaction.response.edit_message(
+                content="**Manage __tags__**:",
+                embed=gen_cache_overview(self.category, self.tags),
             )
         else:
             await interaction.response.send_message(
-                f"Tag `{tag}` already exists.", ephemeral=True
+                f"❌ Tag `{tag}` already exists.", ephemeral=True
             )
 
 
 class RemoveTagModal(Modal):
-    def __init__(self, *, bot, user_id, tags, **kwargs):
-        super().__init__(title="Remove Tag", **kwargs)
+    def __init__(self, *, bot, user_id, category, tags, **kwargs):
+        super().__init__(title="Add Tag", **kwargs)
         self.bot = bot
         self.user_id = user_id
         self.tags = tags
+        self.category = category
 
         self.tag_input = TextInput(
             label="Tag",
@@ -195,21 +260,23 @@ class RemoveTagModal(Modal):
 
         if tag in self.tags:
             self.tags.remove(tag)
-            await interaction.response.send_message(
-                f"Tag `{tag}` removed.", ephemeral=True
+            await interaction.response.edit_message(
+                content="**Manage __tags__**:",
+                embed=gen_cache_overview(self.category, self.tags),
             )
         else:
             await interaction.response.send_message(
-                f"No such tag `{tag}` found.", ephemeral=True
+                f"❌ No such tag `{tag}` found.", ephemeral=True
             )
 
 
 class RenameTagModal(Modal):
-    def __init__(self, *, bot, user_id, tags, **kwargs):
-        super().__init__(title="Rename Tag", **kwargs)
+    def __init__(self, *, bot, user_id, category, tags, **kwargs):
+        super().__init__(title="Add Tag", **kwargs)
         self.bot = bot
         self.user_id = user_id
         self.tags = tags
+        self.category = category
 
         self.current_tag_input = TextInput(
             label="Current Tag",
@@ -229,25 +296,26 @@ class RenameTagModal(Modal):
         self.add_item(self.new_tag_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        current_tag = self.current_tag_name.value
-        new_tag = self.new_tag_name.value
+        current_tag = self.current_tag_input.value
+        new_tag = self.new_tag_input.value
 
         if current_tag not in self.tags:
             await interaction.response.send_message(
-                f"No tag named `{current_tag}` found.", ephemeral=True
+                f"❌ No tag named `{current_tag}` found.", ephemeral=True
             )
             return
 
         if new_tag in self.tags:
             await interaction.response.send_message(
-                "A tag with this name already exists. Please choose a different name.",
+                f"❌ Tag `{new_tag}` already exists.",
                 ephemeral=True,
             )
             return
 
         self.tags[self.tags.index(current_tag)] = new_tag
-        await interaction.response.send_message(
-            f"Tag `{current_tag}` renamed to `{new_tag}`.", ephemeral=True
+        await interaction.response.edit_message(
+            content="**Manage __tags__**:",
+            embed=gen_cache_overview(self.category, self.tags),
         )
 
 
@@ -272,10 +340,11 @@ class RemoveChannelModal(Modal):
 
         if channel:
             await channel.delete()
-            await interaction.response.send_message(
-                f"✅ Category `{channel_name}` removed from `{self.category.name}`.",
-                ephemeral=True,
+            await interaction.response.edit_message(
+                content="**Manage __categories__**:",
+                embed=gen_cache_overview(self.category, []),
             )
+
         else:
             await interaction.response.send_message(
                 f"❌ No channel named `{channel_name}` found in `{self.category.name}`.",
@@ -338,9 +407,9 @@ class RenameChannelModal(Modal):
         if channel:
             if not new_channel:
                 await channel.edit(name=new_channel_name)
-                await interaction.response.send_message(
-                    f"✅ Category `{current_channel_name}` renamed to `{new_channel_name}`.",  # noqa E501
-                    ephemeral=True,
+                await interaction.response.edit_message(
+                    content="**Manage __categories__**:",
+                    embed=gen_cache_overview(self.category, []),
                 )
             else:
                 await interaction.response.send_message(
@@ -401,9 +470,9 @@ class AddChannelModal(Modal):
             )
         else:
             await self.category.create_text_channel(name=channel_name)
-            await interaction.response.send_message(
-                f"✅ Category `{channel_name}` added to `{self.category.name}`.",
-                ephemeral=True,
+            await interaction.response.edit_message(
+                content="**Manage __categories__**:",
+                embed=gen_cache_overview(self.category, []),
             )
 
     async def on_error(
@@ -455,16 +524,15 @@ class ManageCacheModal(Modal):
             return
 
         category = await interaction.guild.create_category(category_name)
-        await interaction.response.send_message(
-            f"✅ Cache `{cache_name}` setup successfully!", ephemeral=True
-        )
 
         # Send a follow-up message with options to add or remove channels
         view = ManageChannelsView(
             bot=self.bot, user_id=self.user_id, category=category, cog=self.cog
         )
-        await interaction.followup.send(
-            f"Manage **categories** in `{cache_name}`:", view=view, ephemeral=True
+        await interaction.response.edit_message(
+            content="**Manage __categories__**:",
+            embed=gen_cache_overview(category, []),
+            view=view,
         )
 
     async def on_error(
