@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from utils.data import DiscordBot
 from utils.default import CustomContext
+from ui.manage import gen_cache_overview
 
 
 class Development(commands.Cog):
@@ -9,6 +10,21 @@ class Development(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+
+    def gen_cache_embeds(self, cacheList):
+        embedList = []
+        for cache in cacheList:
+            guild = self.bot.get_guild(cache.get("guild_id"))
+            if not guild:
+                continue  # Skip if guild is not found
+
+            categoryChannel = guild.get_channel(cache.get("category_id"))
+            if not categoryChannel:
+                continue  # Skip if category is not found
+
+            cache_embed = gen_cache_overview(categoryChannel, cache.get("tags"))
+            embedList.append(cache_embed)
+        return embedList
 
     @commands.command()
     async def purge(self, ctx: CustomContext, num: int = 10):
@@ -80,6 +96,81 @@ class Development(commands.Cog):
             f"Deleted {len(qc_categories)} categories starting with `[QC]`.",
             delete_after=5,
         )
+
+    @commands.command()
+    async def test(self, ctx: CustomContext):
+        from utils.db import DatabaseUtils
+
+        embedList = []
+
+        db = DatabaseUtils()
+
+        user_id = ctx.author.id
+        guild_id = ctx.guild.id
+
+        # Fetch all categories that start with [QC]
+        qc_categories = [
+            category
+            for category in ctx.guild.categories
+            if category.name.startswith("[QC]")
+        ]
+
+        # Sort categories by creation date (optional)
+        qc_categories = sorted(qc_categories, key=lambda c: c.created_at)
+
+        if qc_categories:
+            category_ids = [x.id for x in qc_categories]
+        else:
+            await ctx.send("No `[QC]` category found.")
+            return
+
+        for category_id in category_ids:
+            # Adding a cache with tags
+            db.add_cache(
+                user_id=user_id,
+                guild_id=guild_id,
+                category_id=category_id,
+                tags=["important", "todo"],
+            )
+
+        caches = db.get_caches_for_user(user_id=user_id)
+        embedList = self.gen_cache_embeds(caches)
+        if embedList:
+            await ctx.send(embeds=embedList)
+
+        # Updating tags for a cache
+        for category_id in category_ids:
+            db.update_tags(
+                user_id=user_id,
+                guild_id=guild_id,
+                category_id=category_id,
+                new_tags=["done", "archived"],
+            )
+
+        caches = db.get_caches_for_user(user_id=user_id)
+        embedList = self.gen_cache_embeds(caches)
+        if embedList:
+            await ctx.send(content="## NEW MESSAGE", embeds=embedList)
+
+        # Fetching all caches and tags for a user
+        caches = db.get_caches_for_user(user_id=user_id)
+        print(caches)
+
+        # Deleting a cache
+        try:
+            db.reset()
+        except Exception as e:
+            await ctx.send(f"Failed to delete cache: {e}")
+            return
+
+        caches = db.get_caches_for_user(user_id=user_id)
+        embedList = self.gen_cache_embeds(caches)
+        if embedList:
+            await ctx.send(embeds=embedList)
+        else:
+            await ctx.send("No caches available.")
+
+        await ctx.send("Alr bruh.")
 
 
 async def setup(bot: DiscordBot):
