@@ -1,6 +1,8 @@
 import discord
 from datetime import datetime
 from discord.ui import Modal, TextInput, View, Button
+import json
+import io
 
 
 def gen_cache_overview(category: discord.CategoryChannel, tag_list):
@@ -115,6 +117,7 @@ class ManageChannelsView(View):
             embed=gen_cache_overview(self.category, self.tags),
             view=view,
         )
+        self.stop()
 
 
 class ManageTagsView(View):
@@ -129,7 +132,7 @@ class ManageTagsView(View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
-                "You are not authorized to use this button.", ephemeral=True
+                "❌ You are not authorized to use this button.", ephemeral=True
             )
             return False
         return True
@@ -176,12 +179,16 @@ class ManageTagsView(View):
     )
     async def finish_tag_button(self, interaction: discord.Interaction, button: Button):
 
+        view = SaveJSONView(
+            bot=self.bot, user_id=self.user_id, category=self.category, tags=self.tags
+        )
         cache_name = self.category.name.removeprefix("[QC] ")
         await interaction.response.edit_message(
             content=f"**`{cache_name}` Setup finished!**:",
             embed=gen_cache_overview(self.category, self.tags),
-            view=None,
+            view=view,
         )
+        self.stop()
 
 
 class ManageCacheView(View):
@@ -203,6 +210,124 @@ class ManageCacheView(View):
         # Respond to the interaction with the modal
         await interaction.response.send_modal(
             ManageCacheModal(bot=self.bot, user_id=self.user_id, cog=self.cog)
+        )
+
+    @discord.ui.button(label="Load JSON", style=discord.ButtonStyle.secondary)
+    async def load_button(self, interaction: discord.Interaction, button: Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ You are not authorized to use this button.", ephemeral=True
+            )
+            return
+
+        # Respond to the interaction with the modal
+        await interaction.response.send_modal(
+            LoadJSONModal(bot=self.bot, user_id=self.user_id, cog=self.cog)
+        )
+
+
+class SaveJSONView(View):
+    def __init__(
+        self, *, bot, user_id, category: discord.CategoryChannel, tags, **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.bot = bot
+        self.user_id = user_id
+        self.category = category
+        self.tags = tags
+
+    @discord.ui.button(
+        label="Save preferences as JSON", style=discord.ButtonStyle.secondary
+    )
+    async def save_button(self, interaction: discord.Interaction, button: Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ You are not authorized to use this button.", ephemeral=True
+            )
+            return
+
+        cache_name = self.category.name.removeprefix("[QC] ")
+        # Build the JSON structure
+        quickcache_data = {
+            "Cache_Name": cache_name,
+            "Categories": [],
+            "Tags": self.tags,
+        }
+
+        # Add channels to the JSON structure
+        for channel in self.category.text_channels:
+            quickcache_data["Categories"].append({"Category_name": channel.name})
+
+        # Convert the data to a JSON string
+        json_data = json.dumps(quickcache_data, indent=4)
+
+        # Create a file-like object to send as a file
+        json_file = io.StringIO(json_data)
+        cache_name = self.category.name.removeprefix("[QC] ")
+        json_file.name = f"{cache_name}_QuickCache.json"  # Give the file a name
+
+        # Respond with the JSON file
+        await interaction.response.send_message(
+            content="Here's your QuickCache JSON file:",
+            file=discord.File(json_file, filename=json_file.name),
+            ephemeral=True,
+        )
+
+
+class LoadJSONModal(Modal):
+    def __init__(self, *, bot, user_id, cog, **kwargs):
+        super().__init__(title="Setup a new QuickCache", **kwargs)
+        self.bot = bot
+        self.user_id = user_id
+
+        # Add a text input to the modal
+        self.json_input = TextInput(
+            label="Load JSON",
+            placeholder="Paste JSON preferences for the cache...",
+            required=True,
+            min_length=1,
+            style=discord.TextStyle.long,
+        )
+        self.add_item(self.json_input)
+        self.cog = cog
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Parse the JSON input
+        try:
+            cache_data = json.loads(self.json_input.value)
+        except json.JSONDecodeError:
+            await interaction.response.send_message(
+                "❌ Invalid JSON format. Please try again.", ephemeral=True
+            )
+            return
+
+        # Extract data from JSON
+        cache_name = cache_data.get("Cache_Name", "Unnamed Cache")
+        categories = cache_data.get("Categories", [])
+        tags = cache_data.get("Tags", [])
+
+        # Create a new category named "[QC] {Cache_Name}" in the guild
+        guild = interaction.guild
+        category_channel = await guild.create_category(f"[QC] {cache_name}")
+
+        # Create channels within the newly created category
+        created_channels = []
+        for category in categories:
+            channel_name = category.get("Channel_name", "Unnamed Channel")
+            channel = await guild.create_text_channel(
+                channel_name, category=category_channel
+            )
+            created_channels.append(channel)
+
+        # Send a message with the setup confirmation
+        view = SaveJSONView(
+            bot=self.bot, user_id=self.user_id, category=category_channel, tags=tags
+        )
+        cache_name = category_channel.name.removeprefix("[QC] ")
+        await interaction.response.edit_message(
+            content=f"**`{cache_name}` Setup finished!**:",
+            embed=gen_cache_overview(category_channel, tags),
+            view=view,
         )
 
 
@@ -336,6 +461,8 @@ class RemoveChannelModal(Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         channel_name = self.channel_name.value
+        channel_name.lower()
+        channel_name = channel_name.replace(" ", "-")
         channel = discord.utils.get(self.category.channels, name=channel_name)
 
         if channel:
@@ -398,6 +525,8 @@ class RenameChannelModal(Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         current_channel_name = self.current_channel_name.value
+        current_channel_name.lower()
+        current_channel_name = current_channel_name.replace(" ", "-")
         new_channel_name = self.new_channel_name.value
 
         channel = discord.utils.get(self.category.channels, name=current_channel_name)

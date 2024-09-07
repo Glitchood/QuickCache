@@ -20,7 +20,7 @@ class Manage(commands.Cog):
         # Send the initial message with the view
         view = ManageCacheView(bot=ctx.bot, user_id=ctx.author.id, cog=self)
         sent_message = await ctx.send(
-            "**Click the button below to create a QuickCache.**",
+            "### Click the button below to create a QuickCache.\n-# Or, load preferences from JSON", # noqa E501
             view=view,
         )
 
