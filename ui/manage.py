@@ -55,6 +55,8 @@ def gen_cache_overview(category: discord.CategoryChannel, tag_list):
 
 
 class ManageChannelsView(View):
+    """Manage the categories within a QuickCache"""
+
     def __init__(self, *, bot, user_id, category, cog, **kwargs):
         super().__init__(timeout=300, **kwargs)  # 5 minutes timeout
         self.bot = bot
@@ -121,6 +123,8 @@ class ManageChannelsView(View):
 
 
 class ManageTagsView(View):
+    """Manage the tags within a QuickCache"""
+
     def __init__(self, *, bot, user_id, tags, cog, category, **kwargs):
         super().__init__(timeout=300, **kwargs)  # 5 minutes timeout
         self.bot = bot
@@ -163,10 +167,10 @@ class ManageTagsView(View):
             )
         )
 
-    @discord.ui.button(emoji="✏️", label="Rename", style=discord.ButtonStyle.gray)
-    async def rename_tag_button(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(emoji="✏️", label="Edit", style=discord.ButtonStyle.gray)
+    async def edit_tag_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(
-            RenameTagModal(
+            EditTagModal(
                 bot=self.bot,
                 user_id=self.user_id,
                 category=self.category,
@@ -192,6 +196,8 @@ class ManageTagsView(View):
 
 
 class ManageCacheView(View):
+    """Sets up a QuickCache"""
+
     def __init__(self, *, bot, user_id, cog, **kwargs):
         super().__init__(**kwargs)
         self.bot = bot
@@ -227,6 +233,8 @@ class ManageCacheView(View):
 
 
 class SaveJSONView(View):
+    """Saves QuickCache preferences as JSON"""
+
     def __init__(
         self, *, bot, user_id, category: discord.CategoryChannel, tags, **kwargs
     ):
@@ -275,6 +283,8 @@ class SaveJSONView(View):
 
 
 class LoadJSONModal(Modal):
+    """Loads QuickCache preferences from JSON data"""
+
     def __init__(self, *, bot, user_id, cog, **kwargs):
         super().__init__(title="Setup a new QuickCache", **kwargs)
         self.bot = bot
