@@ -405,7 +405,8 @@ class RemoveTagModal(Modal):
             )
 
 
-class RenameTagModal(Modal):
+class EditTagModal(Modal):
+    # Should be able to rename a tag as well as change the color of the tag ## MAKE COMMENTS ON EACH OF THE TAG MODALS AND ASK CHATGPT TO FIX THEM ACCORDING TO THE COMMENTS (REMEMBER ADDING COLORS TO TAGS) # noqa E501
     def __init__(self, *, bot, user_id, category, tags, **kwargs):
         super().__init__(title="Add Tag", **kwargs)
         self.bot = bot
